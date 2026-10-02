@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemini CLI UI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #0d0d0d; color: #e8e8e8;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+    header {
+      background: #1a1a1a; padding: 12px 20px; border-bottom: 1px solid #333;
+      display: flex; align-items: center; gap: 10px;
+    }
+    header h1 { font-size: 16px; font-weight: 600; }
+    #chat {
+      flex: 1; overflow-y: auto; padding: 20px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .msg {
+      max-width: 80%; padding: 12px 16px; border-radius: 12px;
+      line-height: 1.5; white-space: pre-wrap;
+    }
+    .user {
+      align-self: flex-end; background: #2563eb; color: #fff;
+    }
+    .assistant {
+      align-self: flex-start; background: #1f1f1f; border: 1px solid #333;
+    }
+    .error { background: #7f1d1d; border: 1px solid #ef4444; }
+    #input-area {
+      background: #1a1a1a; padding: 16px; border-top: 1px solid #333;
+      display: flex; gap: 10px;
+    }
+    #prompt {
+      flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #444;
+      background: #0d0d0d; color: #fff; resize: none; font-family: inherit;
+    }
+    #send {
+      padding: 0 24px; border-radius: 8px; border: none;
+      background: #2563eb; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    #send:disabled { background: #444; cursor: not-allowed; }
+    #status { font-size: 12px; color: #888; margin-left: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Gemini CLI</h1>
+    <span id="status">Подключение...</span>
+  </header>
+  <div id="chat"></div>
+  <div id="input-area">
+    <textarea id="prompt" rows="1" placeholder="Введи запрос... (Shift+Enter — новая строка)"></textarea>
+    <button id="send">Отправить</button>
+  </div>
+  <script>
+    const chat = document.getElementById('chat');
+    const promptEl = document.getElementById('prompt');
+    const sendBtn = document.getElementById('send');
+    const statusEl = document.getElementById('status');
+
+    const ws = new WebSocket(`ws://${location.host.split(':')[0]}:3001`);
+
+    ws.onopen = () => { statusEl.textContent = 'Подключено'; };
+    ws.onclose = () => { statusEl.textContent = 'Отключено'; };
+    ws.onerror = () => { statusEl.textContent = 'Ошибка'; };
+
+    let currentMsg = null;
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'content') {
+        if (!currentMsg) {
+          currentMsg = document.createElement('div');
+          currentMsg.className = 'msg assistant';
+          chat.appendChild(currentMsg);
+          chat.scrollTop = chat.scrollHeight;
+        }
+        currentMsg.textContent += msg.data;
+      } else if (msg.type === 'error') {
+        const err = document.createElement('div');
+        err.className = 'msg error';
+        err.textContent = msg.data;
+        chat.appendChild(err);
+        currentMsg = null;
+      } else if (msg.type === 'done') {
+        currentMsg = null;
+        sendBtn.disabled = false;
+      }
+    };
+
+    function send() {
+      const text = promptEl.value.trim();
+      if (!text) return;
+      promptEl.value = '';
+      const userMsg = document.createElement('div');
+      userMsg.className = 'msg user';
+      userMsg.textContent = text;
+      chat.appendChild(userMsg);
+      ws.send(JSON.stringify({ prompt: text }));
+      sendBtn.disabled = true;
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    sendBtn.onclick = send;
+    promptEl.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    };
+  </script>
+</body>
+</html>
